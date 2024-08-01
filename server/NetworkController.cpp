@@ -209,7 +209,7 @@ int NetworkController::setDefaultNetwork(unsigned netId) {
 
 uint32_t NetworkController::getNetworkForDnsLocked(unsigned* netId, uid_t uid) const {
     Fwmark fwmark;
-    fwmark.protectedFromVpn = true;
+    fwmark.protectedFromVpn = canProtectLocked(uid);
     fwmark.permission = getPermissionForUserLocked(uid);
 
     Network* appDefaultNetwork = getPhysicalOrUnreachableNetworkForUserLocked(uid);
@@ -224,7 +224,6 @@ uint32_t NetworkController::getNetworkForDnsLocked(unsigned* netId, uid_t uid) c
         *netId = defaultNetId;
         fwmark.netId = *netId;
         fwmark.explicitlySelected = true;
-        fwmark.protectedFromVpn = canProtectLocked(uid);
         return fwmark.intValue;
     }
 
@@ -240,8 +239,6 @@ uint32_t NetworkController::getNetworkForDnsLocked(unsigned* netId, uid_t uid) c
         Network *network = getNetworkLocked(*netId);
         if (network && network->isVirtual() && !resolv_has_nameservers(*netId)) {
             *netId = defaultNetId;
-        } else {
-            fwmark.protectedFromVpn = canProtectLocked(uid);
         }
     } else {
         // If the user is subject to a VPN and the VPN provides DNS servers, use those servers
