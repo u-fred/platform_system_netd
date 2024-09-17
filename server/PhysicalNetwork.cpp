@@ -241,7 +241,7 @@ int PhysicalNetwork::removeInterface(const std::string& interface) {
         return ret;
     }
     if (gCtls->multicastFirewallCtrl.setInterfaceRules(interface.c_str(), false)) {
-        // We really should put the interface down if these rules aren't removed. Even if we were
+        // We really should take some measure to ensure these rules get removed. Even if we were
         // to return an error instead of logging, the error just ends up getting logged and no
         // action is taken. Upstream doesn't seem to care about getting into states that could
         // result in leaks, so there's little point making significant changes just for this
