@@ -286,7 +286,7 @@ void Controllers::initIptablesRules() {
     firewallCtrl.setupIptablesHooks();
     gLog.info("Setting up FirewallController hooks: %" PRId64 "us", s.getTimeAndResetUs());
 
-    /* DROPs all multicast packets not being sent/received on an explicitly allowed interface. */
+    /* Firewall that DROPS all multicast, IGMP and MLD going in/out VPN (tun) interfaces. */
     multicastFirewallCtrl.setupIptablesHooks();
     gLog.info("Setting up MulticastFirewallController hooks: %" PRId64 "us",
               s.getTimeAndResetUs());
