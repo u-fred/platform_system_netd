@@ -27,7 +27,7 @@
 namespace android {
 namespace net {
 
-class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd {
+class NetdNativeService : public BnNetd {
   public:
     NetdNativeService();
     static status_t start();

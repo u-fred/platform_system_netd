@@ -119,6 +119,7 @@ cc_defaults {
         "mdns_aidl_interface-V1-cpp",
         "netd_event_listener_interface-V1-cpp",
         "oemnetd_aidl_interface-cpp",
+        "vdc_aidl_interface-V1-cpp",
     ],
     static_libs: [
         "libip_checksum",

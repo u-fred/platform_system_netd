@@ -50,6 +50,7 @@
 #include "binder_utils/BinderUtil.h"
 #include "binder_utils/NetdPermissions.h"
 #include "netid_client.h"  // NETID_UNSET
+#include "VdcService.h"
 
 using android::base::StringPrintf;
 using android::base::WriteStringToFile;
@@ -128,9 +129,22 @@ NetdNativeService::NetdNativeService() {
     };
 }
 
+binder::Status VdcService::startDaemon() {
+    ALOGE("VdcService::startDaemon");
+    return binder::Status::ok();
+}
+
 status_t NetdNativeService::start() {
     IPCThreadState::self()->disableBackgroundScheduling(true);
-    const status_t ret = BinderService<NetdNativeService>::publish();
+
+    sp<NetdNativeService> netdNativeService = new NetdNativeService;
+    sp<VdcService> vdcService = new VdcService;
+    netdNativeService->setExtension(vdcService);
+
+    sp<IServiceManager> sm(defaultServiceManager());
+    const status_t ret = sm->addService(String16(NetdNativeService::getServiceName()),
+                                        netdNativeService, false,
+                                        IServiceManager::DUMP_FLAG_PRIORITY_DEFAULT);
     if (ret != android::OK) {
         return ret;
     }
