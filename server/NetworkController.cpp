@@ -162,6 +162,7 @@ NetworkController::NetworkController() :
             }
         }
     }
+    //mVpnMulticastCompatModeEnabled = false;
     gLog.info("leave NetworkController ctor");
 }
 
@@ -207,7 +208,41 @@ int NetworkController::setDefaultNetwork(unsigned netId) {
     return 0;
 }
 
+/*
+ * VirtualNetwork* virtualNetwork2 = getVirtualNetworkForUserLocked(0);
+    if (virtualNetwork2) {
+        ALOGE("getNetworkForDnsLocked uid 0 virtualNetwork: %u", virtualNetwork2->getNetId());
+    } else {
+        ALOGE("getNetworkForDnsLocked uid 0 virtualNetwork: none");
+    }
+    virtualNetwork2 = getVirtualNetworkForUserLocked(10148);
+    if (virtualNetwork2) {
+        ALOGE("getNetworkForDnsLocked uid 10148 virtualNetwork: %u", virtualNetwork2->getNetId());
+    } else {
+        ALOGE("getNetworkForDnsLocked uid 10148 virtualNetwork: none");
+    }
+    virtualNetwork2 = getVirtualNetworkForUserLocked(10150);
+    if (virtualNetwork2) {
+        ALOGE("getNetworkForDnsLocked uid 10150 virtualNetwork: %u", virtualNetwork2->getNetId());
+    } else {
+        ALOGE("getNetworkForDnsLocked uid 10150 virtualNetwork: none");
+    }
+ */
+
+
 uint32_t NetworkController::getNetworkForDnsLocked(unsigned* netId, uid_t uid) const {
+    // TODO: Lock?
+    VirtualNetwork *userNetwork = getVirtualNetworkForUserLocked(uid);
+    VirtualNetwork *requestedNetwork = getVirtualNetworkLocked(*netId);
+    if ((userNetwork != nullptr && userNetwork->getVpnDnsCompatModeEnabled()) ||
+        (requestedNetwork != nullptr && requestedNetwork->getVpnDnsCompatModeEnabled())) {
+        return getNetworkForDnsLockedLeaky(netId, uid);
+    }
+    return getNetworkForDnsLockedNotLeaky(netId, uid);
+}
+
+uint32_t NetworkController::getNetworkForDnsLockedLeaky(unsigned* netId, uid_t uid) const {
+    ALOGE("VdcService::getNetworkForDnsLockedLeaky");
     Fwmark fwmark;
     fwmark.protectedFromVpn = true;
     fwmark.permission = PERMISSION_SYSTEM;
@@ -266,6 +301,67 @@ uint32_t NetworkController::getNetworkForDnsLocked(unsigned* netId, uid_t uid) c
     fwmark.netId = *netId;
     return fwmark.intValue;
 }
+
+    uint32_t NetworkController::getNetworkForDnsLockedNotLeaky(unsigned* netId, uid_t uid) const {
+        ALOGE("VdcService::getNetworkForDnsLockedNotLeaky");
+        Fwmark fwmark;
+        fwmark.protectedFromVpn = true;
+        fwmark.permission = PERMISSION_SYSTEM;
+
+        Network* appDefaultNetwork = getPhysicalOrUnreachableNetworkForUserLocked(uid);
+        unsigned defaultNetId = appDefaultNetwork ? appDefaultNetwork->getNetId() : mDefaultNetId;
+
+        // Common case: there is no VPN that applies to the user, and the query did not specify a netId.
+        // Therefore, it is safe to set the explicit bit on this query and skip all the complex logic
+        // below. While this looks like a special case, it is actually the one that handles the vast
+        // majority of DNS queries.
+        // TODO: untangle this code.
+        if (*netId == NETID_UNSET && getVirtualNetworkForUserLocked(uid) == nullptr) {
+            *netId = defaultNetId;
+            fwmark.netId = *netId;
+            fwmark.explicitlySelected = true;
+            fwmark.protectedFromVpn = canProtectLocked(uid);
+            fwmark.permission = getPermissionForUserLocked(uid);
+            return fwmark.intValue;
+        }
+
+        if (checkUserNetworkAccessLocked(uid, *netId) == 0) {
+            // If a non-zero NetId was explicitly specified, and the user has permission for that
+            // network, use that network's DNS servers. (possibly falling through the to the default
+            // network if the VPN doesn't provide a route to them).
+            fwmark.explicitlySelected = true;
+
+            // If the network is a VPN and it doesn't have DNS servers, use the default network's DNS
+            // servers (through the default network). Otherwise, the query is guaranteed to fail.
+            // http://b/29498052
+            Network *network = getNetworkLocked(*netId);
+            if (network && network->isVirtual() && !resolv_has_nameservers(*netId)) {
+                *netId = defaultNetId;
+            }
+
+            if (!network || !network->isVirtual() || !resolv_has_nameservers(*netId)) {
+                fwmark.protectedFromVpn = canProtectLocked(uid);
+                fwmark.permission = getPermissionForUserLocked(uid);
+            }
+        } else {
+            // If the user is subject to a VPN and the VPN provides DNS servers, use those servers
+            // (possibly falling through to the default network if the VPN doesn't provide a route to
+            // them). Otherwise, use the default network's DNS servers.
+            // TODO: Consider if we should set the explicit bit here.
+            VirtualNetwork* virtualNetwork = getVirtualNetworkForUserLocked(uid);
+            if (virtualNetwork && resolv_has_nameservers(virtualNetwork->getNetId())) {
+                *netId = virtualNetwork->getNetId();
+            } else {
+                // TODO: return an error instead of silently doing the DNS lookup on the wrong network.
+                // http://b/27560555
+                *netId = defaultNetId;
+                fwmark.protectedFromVpn = canProtectLocked(uid);
+                fwmark.permission = getPermissionForUserLocked(uid);
+            }
+        }
+        fwmark.netId = *netId;
+        return fwmark.intValue;
+    }
 
 // Returns the NetId that a given UID would use if no network is explicitly selected. Specifically,
 // the VPN that applies to the UID if any; Otherwise, the default network for UID; Otherwise the
@@ -744,6 +840,7 @@ void NetworkController::allowProtect(uid_t uid) {
 void NetworkController::denyProtect(uid_t uid) {
     ScopedWLock lock(mRWLock);
     mProtectableUsers.erase(uid);
+    ALOGW("test");
 }
 
 void NetworkController::dump(DumpWriter& dw) {
@@ -863,6 +960,25 @@ bool NetworkController::isValidNetworkLocked(unsigned netId) const {
 Network* NetworkController::getNetworkLocked(unsigned netId) const {
     auto iter = mNetworks.find(netId);
     return iter == mNetworks.end() ? nullptr : iter->second;
+}
+
+VirtualNetwork* NetworkController::getVirtualNetworkLocked(unsigned netId) const {
+    Network* network = getNetworkLocked(netId);
+    if (network && network->isVirtual()) {
+        return (VirtualNetwork*)network;
+    }
+    return nullptr;
+}
+
+void NetworkController::setVpnDnsCompatModeEnabled(unsigned int netId, bool enabled) {
+    // TODO: Lock?
+    VirtualNetwork* network = getVirtualNetworkLocked(netId);
+    if (network) {
+        ALOGE("VdcService::setVpnDnsCompatModeEnabled, network found, netId: %u", netId);
+        network->setVpnDnsCompatModeEnabled(enabled);
+    } else {
+        ALOGE("VdcService::setVpnDnsCompatModeEnabled, network not found, netId: %u", netId);
+    }
 }
 
 VirtualNetwork* NetworkController::getVirtualNetworkForUserLocked(uid_t uid) const {
@@ -1044,5 +1160,17 @@ void NetworkController::updateTcpSocketMonitorPolling() {
         android::net::gCtls->tcpSocketMonitor.suspendPolling();
     }
 }
+
+/*
+bool NetworkController::getVpnMulticastCompatModeEnabled() {
+    // TODO: Lock?
+    return mVpnMulticastCompatModeEnabled;
+}
+
+void NetworkController::setVpnMulticastCompatModeEnabled(bool enabled) {
+    // TODO: Lock?
+    mVpnMulticastCompatModeEnabled = enabled;
+}
+ */
 
 }  // namespace android::net

@@ -28,7 +28,8 @@ namespace android {
 namespace net {
 
 VirtualNetwork::VirtualNetwork(unsigned netId, bool secure, bool excludeLocalRoutes)
-    : Network(netId, secure), mExcludeLocalRoutes(excludeLocalRoutes) {}
+    : Network(netId, secure), mExcludeLocalRoutes(excludeLocalRoutes),
+    mVpnDnsCompatModeEnabled(false) {}
 
 VirtualNetwork::~VirtualNetwork() {}
 
@@ -95,6 +96,14 @@ int VirtualNetwork::removeInterface(const std::string& interface) {
 bool VirtualNetwork::isValidSubPriority(int32_t priority) {
     // Only supports default subsidiary permissions.
     return priority == UidRanges::SUB_PRIORITY_HIGHEST;
+}
+
+bool VirtualNetwork::getVpnDnsCompatModeEnabled() {
+    return mVpnDnsCompatModeEnabled;
+}
+
+void VirtualNetwork::setVpnDnsCompatModeEnabled(bool enabled) {
+    mVpnDnsCompatModeEnabled = enabled;
 }
 
 }  // namespace net

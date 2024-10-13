@@ -134,6 +134,16 @@ binder::Status VdcService::startDaemon() {
     return binder::Status::ok();
 }
 
+binder::Status VdcService::setVpnDnsCompatModeEnabled(int netId, bool enabled) {
+    ALOGE("VdcService::setVpnDnsCompatMode");
+    //return binder::Status::ok();
+    // NetworkController::removeUsersFromNetwork is thread-safe.
+    // TODO: Thread safe? Network stack?
+    ENFORCE_NETWORK_STACK_PERMISSIONS();
+    gCtls->netCtrl.setVpnDnsCompatModeEnabled(netId, enabled);
+    return binder::Status::ok();
+}
+
 status_t NetdNativeService::start() {
     IPCThreadState::self()->disableBackgroundScheduling(true);
 
@@ -327,6 +337,7 @@ binder::Status NetdNativeService::networkDestroy(int32_t netId) {
 }
 
 binder::Status NetdNativeService::networkAddInterface(int32_t netId, const std::string& iface) {
+    // TODO: Call into networkAddInterfaceCompat wit compat mode set to true or false?
     ENFORCE_NETWORK_STACK_PERMISSIONS();
     int ret = gCtls->netCtrl.addInterfaceToNetwork(netId, iface.c_str());
     return statusFromErrcode(ret);
@@ -1243,6 +1254,14 @@ binder::Status NetdNativeService::setNetworkAllowlist(
     ENFORCE_NETWORK_STACK_PERMISSIONS();
     return statusFromErrcode(gCtls->netCtrl.setNetworkAllowlist(rangeConfigs));
 }
+
+/*
+binder::Status NetdNativeService::setVpnMulticastCompatModeEnabled(bool enabled) {
+    ENFORCE_NETWORK_STACK_PERMISSIONS();
+    gCtls->netCtrl.setVpnMulticastCompatModeEnabled(enabled);
+    return binder::Status::ok();
+}
+ */
 
 }  // namespace net
 }  // namespace android

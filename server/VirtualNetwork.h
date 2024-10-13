@@ -40,6 +40,8 @@ public:
   [[nodiscard]] int removeUsers(const UidRanges& uidRanges, int32_t subPriority) override;
   bool isVirtual() override { return true; }
   bool canAddUsers() override { return true; }
+  bool getVpnDnsCompatModeEnabled();
+  void setVpnDnsCompatModeEnabled(bool enabled);
 
 private:
   std::string getTypeString() const override { return "VIRTUAL"; };
@@ -48,6 +50,8 @@ private:
   bool isValidSubPriority(int32_t priority) override;
   // Whether the local traffic will be excluded from the VPN network.
   [[maybe_unused]] const bool mExcludeLocalRoutes;
+  // TODO: maybe_unused?
+  [[maybe_unused]] bool mVpnDnsCompatModeEnabled;
 };
 
 }  // namespace android::net
