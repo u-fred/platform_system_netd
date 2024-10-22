@@ -50,6 +50,7 @@
 #include "binder_utils/BinderUtil.h"
 #include "binder_utils/NetdPermissions.h"
 #include "netid_client.h"  // NETID_UNSET
+#include "NetdNativeServiceExtension.h"
 
 using android::base::StringPrintf;
 using android::base::WriteStringToFile;
@@ -128,9 +129,27 @@ NetdNativeService::NetdNativeService() {
     };
 }
 
+binder::Status NetdNativeServiceExtension::setVpnDnsCompatModeEnabled(int netId, bool enabled) {
+    // NetworkController::removeUsersFromNetwork is thread-safe.
+    // TODO: Thread safe? Network stack?
+    ENFORCE_NETWORK_STACK_PERMISSIONS();
+    gCtls->netCtrl.setVpnDnsCompatModeEnabled(netId, enabled);
+    if (netId){}
+    if (enabled){}
+    ALOGE("etdNativeServiceExtension::setVpnDnsCompatModeEnabled");
+    return binder::Status::ok();
+}
+
 status_t NetdNativeService::start() {
     IPCThreadState::self()->disableBackgroundScheduling(true);
-    const status_t ret = BinderService<NetdNativeService>::publish();
+
+    sp<NetdNativeService> netdNativeService = new NetdNativeService;
+    sp<NetdNativeServiceExtension> netdNativeServiceExtension = new NetdNativeServiceExtension;
+    netdNativeService->setExtension(netdNativeServiceExtension);
+    sp<IServiceManager> sm(defaultServiceManager());
+    const status_t ret = sm->addService(String16(NetdNativeService::getServiceName()),
+                                        netdNativeService, false,
+                                        IServiceManager::DUMP_FLAG_PRIORITY_DEFAULT);
     if (ret != android::OK) {
         return ret;
     }

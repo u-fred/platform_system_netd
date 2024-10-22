@@ -208,6 +208,22 @@ int NetworkController::setDefaultNetwork(unsigned netId) {
 }
 
 uint32_t NetworkController::getNetworkForDnsLocked(unsigned* netId, uid_t uid) const {
+    // TODO: Only need to call the leaky method for the paths that we've excluded the call to
+    //  protect. Review with this in mind.
+    // TODO: Lock?
+    /*
+    VirtualNetwork *userNetwork = getVirtualNetworkForUserLocked(uid);
+    VirtualNetwork *requestedNetwork = getVirtualNetworkLocked(*netId);
+    if ((userNetwork != nullptr && userNetwork->getVpnDnsCompatModeEnabled()) ||
+        (requestedNetwork != nullptr && requestedNetwork->getVpnDnsCompatModeEnabled())) {
+        return getNetworkForDnsLockedLeaky(netId, uid);
+    }
+     */
+    return getNetworkForDnsLockedNotLeaky(netId, uid);
+
+}
+
+uint32_t NetworkController::getNetworkForDnsLockedLeaky(unsigned* netId, uid_t uid) const {
     Fwmark fwmark;
     fwmark.protectedFromVpn = canProtectLocked(uid, *netId);
     fwmark.permission = getPermissionForUserLocked(uid);
@@ -253,6 +269,63 @@ uint32_t NetworkController::getNetworkForDnsLocked(unsigned* netId, uid_t uid) c
             // TODO: return an error instead of silently doing the DNS lookup on the wrong network.
             // http://b/27560555
             *netId = defaultNetId;
+        }
+    }
+    fwmark.netId = *netId;
+    return fwmark.intValue;
+}
+
+uint32_t NetworkController::getNetworkForDnsLockedNotLeaky(unsigned* netId, uid_t uid) const {
+    Fwmark fwmark;
+    fwmark.protectedFromVpn = canProtectLocked(uid, *netId);
+    fwmark.permission = getPermissionForUserLocked(uid);
+
+    Network* appDefaultNetwork = getPhysicalOrUnreachableNetworkForUserLocked(uid);
+    unsigned defaultNetId = appDefaultNetwork ? appDefaultNetwork->getNetId() : mDefaultNetId;
+
+    // Common case: there is no VPN that applies to the user, and the query did not specify a netId.
+    // Therefore, it is safe to set the explicit bit on this query and skip all the complex logic
+    // below. While this looks like a special case, it is actually the one that handles the vast
+    // majority of DNS queries.
+    // TODO: untangle this code.
+    if (*netId == NETID_UNSET && getVirtualNetworkForUserLocked(uid) == nullptr) {
+        *netId = defaultNetId;
+        fwmark.netId = *netId;
+        fwmark.explicitlySelected = true;
+        ALOGE("getNetworkForDnsLocked Path0, uid: %u, netId: %u", uid, *netId);
+        return fwmark.intValue;
+    }
+
+    if (checkUserNetworkAccessLocked(uid, *netId) == 0) {
+        // If a non-zero NetId was explicitly specified, and the user has permission for that
+        // network, use that network's DNS servers. (possibly falling through the to the default
+        // network if the VPN doesn't provide a route to them).
+        fwmark.explicitlySelected = true;
+
+        // If the network is a VPN and it doesn't have DNS servers, use the default network's DNS
+        // servers (through the default network). Otherwise, the query is guaranteed to fail.
+        // http://b/29498052
+        Network *network = getNetworkLocked(*netId);
+        if (network && network->isVirtual() && !resolv_has_nameservers(*netId)) {
+            *netId = defaultNetId;
+        }
+        ALOGE("getNetworkForDnsLocked Path1, uid: %u, netId: %u", uid, *netId);
+    } else {
+
+        // If the user is subject to a VPN and the VPN provides DNS servers, use those servers
+        // (possibly falling through to the default network if the VPN doesn't provide a route to
+        // them). Otherwise, use the default network's DNS servers.
+        // TODO: Consider if we should set the explicit bit here.
+        VirtualNetwork* virtualNetwork = getVirtualNetworkForUserLocked(uid);
+        if (virtualNetwork && resolv_has_nameservers(virtualNetwork->getNetId())) {
+            *netId = virtualNetwork->getNetId();
+          //  fwmark.explicitlySelected = true;
+            ALOGE("getNetworkForDnsLocked Path2a, uid: %u, netId: %u", uid, *netId);
+        } else {
+            // TODO: return an error instead of silently doing the DNS lookup on the wrong network.
+            // http://b/27560555
+            *netId = defaultNetId;
+            ALOGE("getNetworkForDnsLocked Path2b, uid: %u, netId: %u", uid, *netId);
         }
     }
     fwmark.netId = *netId;
@@ -875,6 +948,25 @@ VirtualNetwork* NetworkController::getVirtualNetworkForUserLocked(uid_t uid) con
         }
     }
     return nullptr;
+}
+
+VirtualNetwork* NetworkController::getVirtualNetworkLocked(unsigned netId) const {
+    Network* network = getNetworkLocked(netId);
+    if (network && network->isVirtual()) {
+        return (VirtualNetwork*)network;
+    }
+    return nullptr;
+}
+
+void NetworkController::setVpnDnsCompatModeEnabled(unsigned int netId, bool enabled) {
+    // TODO: Lock?
+    VirtualNetwork* network = getVirtualNetworkLocked(netId);
+    if (network) {
+        ALOGE("VdcService::setVpnDnsCompatModeEnabled, network found, netId: %u", netId);
+        network->setVpnDnsCompatModeEnabled(enabled);
+    } else {
+        ALOGE("VdcService::setVpnDnsCompatModeEnabled, network not found, netId: %u", netId);
+    }
 }
 
 // Returns the default network with the highest subsidiary priority among physical and unreachable
