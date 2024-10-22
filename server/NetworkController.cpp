@@ -224,8 +224,6 @@ uint32_t NetworkController::getNetworkForDnsLocked(unsigned* netId, uid_t uid) c
         *netId = defaultNetId;
         fwmark.netId = *netId;
         fwmark.explicitlySelected = true;
-        fwmark.protectedFromVpn = canProtectLocked(uid, *netId);
-        fwmark.permission = getPermissionForUserLocked(uid);
         return fwmark.intValue;
     }
 
@@ -242,11 +240,6 @@ uint32_t NetworkController::getNetworkForDnsLocked(unsigned* netId, uid_t uid) c
         if (network && network->isVirtual() && !resolv_has_nameservers(*netId)) {
             *netId = defaultNetId;
         }
-
-        if (!network || !network->isVirtual() || !resolv_has_nameservers(*netId)) {
-            fwmark.protectedFromVpn = canProtectLocked(uid, *netId);
-            fwmark.permission = getPermissionForUserLocked(uid);
-        }
     } else {
         // If the user is subject to a VPN and the VPN provides DNS servers, use those servers
         // (possibly falling through to the default network if the VPN doesn't provide a route to
@@ -259,8 +252,6 @@ uint32_t NetworkController::getNetworkForDnsLocked(unsigned* netId, uid_t uid) c
             // TODO: return an error instead of silently doing the DNS lookup on the wrong network.
             // http://b/27560555
             *netId = defaultNetId;
-            fwmark.protectedFromVpn = canProtectLocked(uid, *netId);
-            fwmark.permission = getPermissionForUserLocked(uid);
         }
     }
     fwmark.netId = *netId;
