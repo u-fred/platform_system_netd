@@ -208,7 +208,7 @@ int NetworkController::setDefaultNetwork(unsigned netId) {
 }
 
 uint32_t NetworkController::getNetworkForDnsLocked(unsigned* netId, uid_t uid) const {
-    ALOGE("getNetworkForDnsLocked, uid: %u, netId: %u", uid, *netId);
+    ALOGI("getNetworkForDnsLocked, uid: %u, netId: %u", uid, *netId);
     Fwmark fwmark;
     fwmark.protectedFromVpn = canProtectLocked(uid, *netId);
     fwmark.permission = getPermissionForUserLocked(uid);
@@ -222,7 +222,7 @@ uint32_t NetworkController::getNetworkForDnsLocked(unsigned* netId, uid_t uid) c
     // majority of DNS queries.
     // TODO: untangle this code.
     if (*netId == NETID_UNSET && getVirtualNetworkForUserLocked(uid) == nullptr) {
-        ALOGE("getNetworkForDnsLocked path0");
+        ALOGI("getNetworkForDnsLocked path0");
         *netId = defaultNetId;
         fwmark.netId = *netId;
         fwmark.explicitlySelected = true;
@@ -230,7 +230,7 @@ uint32_t NetworkController::getNetworkForDnsLocked(unsigned* netId, uid_t uid) c
     }
 
     if (checkUserNetworkAccessLocked(uid, *netId) == 0) {
-        ALOGE("getNetworkForDnsLocked path1");
+        ALOGI("getNetworkForDnsLocked path1");
         // If a non-zero NetId was explicitly specified, and the user has permission for that
         // network, use that network's DNS servers. (possibly falling through the to the default
         // network if the VPN doesn't provide a route to them).
@@ -241,22 +241,22 @@ uint32_t NetworkController::getNetworkForDnsLocked(unsigned* netId, uid_t uid) c
         // http://b/29498052
         Network *network = getNetworkLocked(*netId);
         if (network && network->isVirtual() && !resolv_has_nameservers(*netId)) {
-            ALOGE("getNetworkForDnsLocked path1a");
+            ALOGI("getNetworkForDnsLocked path1a");
             *netId = defaultNetId;
         }
     } else {
-        ALOGE("getNetworkForDnsLocked path2");
+        ALOGI("getNetworkForDnsLocked path2");
         // If the user is subject to a VPN and the VPN provides DNS servers, use those servers
         // (possibly falling through to the default network if the VPN doesn't provide a route to
         // them). Otherwise, use the default network's DNS servers.
         // TODO: Consider if we should set the explicit bit here.
         VirtualNetwork* virtualNetwork = getVirtualNetworkForUserLocked(uid);
         if (virtualNetwork && resolv_has_nameservers(virtualNetwork->getNetId())) {
-            ALOGE("getNetworkForDnsLocked path2a");
+            ALOGI("getNetworkForDnsLocked path2a");
             *netId = virtualNetwork->getNetId();
             fwmark.explicitlySelected = true;
         } else {
-            ALOGE("getNetworkForDnsLocked path2b");
+            ALOGI("getNetworkForDnsLocked path2b");
             // TODO: return an error instead of silently doing the DNS lookup on the wrong network.
             // http://b/27560555
             *netId = defaultNetId;
